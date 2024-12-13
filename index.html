@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload File</title>
+</head>
+<body>
+    <h1>Upload File to Google Drive</h1>
+    <form id="uploadForm">
+        <input type="file" id="fileInput" name="file" required />
+        <button type="submit">Upload</button>
+    </form>
+    <div id="output"></div>
+
+    <script>
+        const form = document.getElementById('uploadForm');
+        const output = document.getElementById('output');
+
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const fileInput = document.getElementById('fileInput');
+            if (!fileInput.files[0]) {
+                output.textContent = 'Please select a file to upload.';
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData,
+                });
+                const result = await response.json();
+
+                if (response.ok) {
+                    output.textContent = `File uploaded successfully! 
+                                          Name: ${result.name}, 
+                                          Link: ${result.webViewLink}`;
+                } else {
+                    output.textContent = `Error: ${result.error}`;
+                }
+            } catch (error) {
+                output.textContent = `Error: ${error.message}`;
+            }
+        });
+    </script>
+</body>
+</html>
