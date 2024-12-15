@@ -1,7 +1,10 @@
-const http = require('http');
-const fs = require('fs');
-const path = require('path');
+const express = require('express');
+const multer = require('multer');
 const { google } = require('googleapis');
+const path = require('path');
+const fs = require('fs');
+
+const app = express();
 
 // Google Drive API setup
 const CLIENT_ID = '628119764907-okmugs74ec3tj0vst880e9eujftpu65g.apps.googleusercontent.com';
@@ -14,65 +17,44 @@ oauth2client.setCredentials({ refresh_token: REFRESH_TOKEN });
 
 const drive = google.drive({ version: 'v3', auth: oauth2client });
 
-const server = http.createServer((req, res) => {
-    if (req.method === 'GET' && req.url === '/') {
-        // Serve the index.html file
-        const filePath = path.join(__dirname, 'index.html');
-        fs.readFile(filePath, (err, data) => {
-            if (err) {
-                res.writeHead(500, { 'Content-Type': 'text/plain' });
-                res.end('Error loading index.html');
-            } else {
-                res.writeHead(200, { 'Content-Type': 'text/html' });
-                res.end(data);
-            }
+// Multer setup for file handling
+const upload = multer({ dest: 'uploads/' });
+
+// Serve the frontend
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// File upload route
+app.post('/upload', upload.single('file'), async (req, res) => {
+    const filePath = req.file.path; // Temporary file path
+    const fileName = req.file.originalname;
+
+    try {
+        // Upload to Google Drive
+        const response = await drive.files.create({
+            requestBody: { name: fileName },
+            media: { body: fs.createReadStream(filePath) },
+            fields: 'id, webViewLink, webContentLink, name',
         });
-    } else if (req.method === 'POST' && req.url === '/upload') {
-        const boundary = req.headers['content-type'].split('boundary=')[1];
-        const chunks = [];
 
-        req.on('data', (chunk) => chunks.push(chunk));
-        req.on('end', async () => {
-            const data = Buffer.concat(chunks);
-            const parts = data.toString().split(`--${boundary}`);
+        // Clean up temporary file
+        fs.unlinkSync(filePath);
 
-            // Extract file data
-            const filePart = parts.find((part) => part.includes('Content-Disposition: form-data; name="file"'));
-            const [headers, fileData] = filePart.split('\r\n\r\n');
-            const filenameMatch = headers.match(/filename="(.+)"/);
-            const filename = filenameMatch ? filenameMatch[1] : 'uploaded_file';
-
-            const tempFilePath = path.join(__dirname, filename);
-
-            // Save file temporarily
-            fs.writeFileSync(tempFilePath, fileData.trimEnd());
-
-            // Upload to Google Drive
-            try {
-                const response = await drive.files.create({
-                    requestBody: { name: filename },
-                    media: { body: fs.createReadStream(tempFilePath) },
-                    fields: 'id, webViewLink, webContentLink, name',
-                });
-
-                // Clean up the temporary file
-                fs.unlinkSync(tempFilePath);
-
-                // Respond with the uploaded file's metadata
-                res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify(response.data));
-            } catch (error) {
-                res.writeHead(500, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: error.message }));
-            }
+        res.json({
+            success: true,
+            ...response.data,
         });
-    } else {
-        res.writeHead(404, { 'Content-Type': 'text/plain' });
-        res.end('Not Found');
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message,
+        });
     }
 });
 
 // Start the server
-server.listen(3000, () => {
-    console.log('Server running at http://localhost:3000');
+const PORT = 3000;
+app.listen(PORT, () => {
+    console.log(`Server running at http://localhost:${PORT}`);
 });
